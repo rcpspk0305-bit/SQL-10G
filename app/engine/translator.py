@@ -119,7 +119,7 @@ class SQLTranslator:
         return SQLCommandType.OTHER
 
     def _transform_data_types(self, expression: exp.Expression) -> exp.Expression:
-        """Walk AST and transform Oracle data types to SQLite types."""
+        """Walk AST and transform Oracle data types and functions for SQLite."""
 
         def transform(node: exp.Expression) -> exp.Expression:
             if isinstance(node, exp.DataType):
@@ -130,6 +130,12 @@ class SQLTranslator:
                 )
                 mapped = map_oracle_type_to_sqlite(str(type_name))
                 return exp.DataType.build(mapped)
+            if isinstance(node, exp.Trunc):
+                # Preserve TRUNC(val, decimals) for SQLite custom function
+                args = [node.this]
+                if node.args.get("decimals"):
+                    args.append(node.args["decimals"])
+                return exp.Anonymous(this="TRUNC", expressions=args)
             return node
 
         return expression.transform(transform)
@@ -171,8 +177,28 @@ class SQLTranslator:
                 target_object=sp_name,
             )
 
+        if cmd_type == SQLCommandType.CREATE_INDEX:
+            # CREATE [UNIQUE] INDEX <name> ON <table> (<cols>)
+            # SQLite does not support NULLS LAST / FIRST in indices
+            idx_sql = re.sub(r"\s+NULLS\s+(LAST|FIRST)", "", cleaned_sql, flags=re.IGNORECASE)
+            idx_name = tokens[2] if tokens[1].upper() == "INDEX" else tokens[3]
+            return TranspiledQuery(
+                cleaned_sql,
+                idx_sql + ";",
+                cmd_type,
+                target_object=idx_name,
+            )
+
+        if cmd_type == SQLCommandType.DROP_INDEX:
+            idx_name = tokens[2] if len(tokens) > 2 else tokens[1]
+            return TranspiledQuery(
+                cleaned_sql,
+                f"DROP INDEX IF EXISTS {idx_name};",
+                cmd_type,
+                target_object=idx_name,
+            )
+
         if cmd_type == SQLCommandType.TRUNCATE_TABLE:
-            # TRUNCATE TABLE <table>
             table_name = tokens[2] if len(tokens) > 2 else tokens[1]
             return TranspiledQuery(
                 cleaned_sql,
@@ -182,7 +208,6 @@ class SQLTranslator:
             )
 
         if cmd_type == SQLCommandType.RENAME_TABLE:
-            # RENAME <table> TO <new_table>
             old_table = tokens[1]
             new_table = tokens[3] if len(tokens) > 3 else tokens[2]
             return TranspiledQuery(
@@ -193,7 +218,6 @@ class SQLTranslator:
             )
 
         if cmd_type == SQLCommandType.GRANT:
-            # GRANT <priv1, priv2> ON <table> TO <user>
             m = re.match(r"GRANT\s+(.+?)\s+ON\s+(\w+)\s+TO\s+(\w+)", cleaned_sql, re.IGNORECASE)
             if m:
                 privs_str, table_name, user = m.groups()
@@ -211,7 +235,6 @@ class SQLTranslator:
                 )
 
         if cmd_type == SQLCommandType.REVOKE:
-            # REVOKE <priv1, priv2> ON <table> FROM <user>
             m = re.match(r"REVOKE\s+(.+?)\s+ON\s+(\w+)\s+FROM\s+(\w+)", cleaned_sql, re.IGNORECASE)
             if m:
                 privs_str, table_name, user = m.groups()
@@ -229,7 +252,6 @@ class SQLTranslator:
                 )
 
         if cmd_type == SQLCommandType.CREATE_MVIEW:
-            # CREATE MATERIALIZED VIEW <name> AS <select>
             pattern = r"CREATE\s+MATERIALIZED\s+VIEW\s+(\w+)\s+AS\s+(.+)"
             m = re.match(pattern, cleaned_sql, re.IGNORECASE | re.DOTALL)
             if m:
@@ -248,7 +270,6 @@ class SQLTranslator:
                 )
 
         if cmd_type == SQLCommandType.REFRESH_MVIEW:
-            # REFRESH MATERIALIZED VIEW <name>
             mview_name = tokens[3] if len(tokens) > 3 else tokens[1]
             return TranspiledQuery(
                 cleaned_sql,
@@ -259,7 +280,6 @@ class SQLTranslator:
             )
 
         if cmd_type == SQLCommandType.DROP_MVIEW:
-            # DROP MATERIALIZED VIEW <name>
             mview_name = tokens[3] if len(tokens) > 3 else tokens[1]
             return TranspiledQuery(
                 cleaned_sql,
@@ -296,6 +316,9 @@ class SQLTranslator:
 
         # Transpile to SQLite dialect
         sqlite_sql = transformed.sql(dialect=self.sqlite_dialect)
+
+        # Clean up SQLite unsupported constructs
+        sqlite_sql = re.sub(r"\s+NULLS\s+(LAST|FIRST)", "", sqlite_sql, flags=re.IGNORECASE)
 
         return TranspiledQuery(
             original_sql=cleaned_sql,

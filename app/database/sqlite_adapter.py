@@ -30,19 +30,19 @@ def _oracle_instr(s: Any, sub: Any, start: int = 1, occurrence: int = 1) -> int:
     if not sub_str:
         return 0
 
-    idx = 0
-    count = 0
     search_pos = max(0, start - 1)
+    count = 0
 
     while count < occurrence:
         found = s_str.find(sub_str, search_pos)
         if found == -1:
             return 0
-        idx = found + 1
         count += 1
+        if count == occurrence:
+            return found + 1
         search_pos = found + 1
 
-    return idx
+    return 0
 
 
 def _oracle_trunc(val: Any, decimals: int = 0) -> Any:
@@ -72,7 +72,7 @@ class SQLiteAdapter(DatabaseAdapter):
 
             self._conn = sqlite3.connect(
                 self.db_path,
-                isolation_level=None,  # Autocommit / explicit SQL transactions
+                isolation_level=None,  # Explicit transaction management
                 check_same_thread=False,
             )
             # Enable foreign keys
@@ -106,7 +106,6 @@ class SQLiteAdapter(DatabaseAdapter):
         """Initialize internal system tables for DCL privileges and Materialized Views."""
         if self._conn:
             cursor = self._conn.cursor()
-            # DCL privileges catalog
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS _oracli_privileges (
@@ -118,7 +117,6 @@ class SQLiteAdapter(DatabaseAdapter):
                 );
                 """
             )
-            # Materialized Views catalog
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS _oracli_mviews (
@@ -139,8 +137,11 @@ class SQLiteAdapter(DatabaseAdapter):
     def begin_transaction(self) -> None:
         """Start an explicit transaction."""
         if self._conn and not self._in_transaction:
-            self._conn.execute("BEGIN TRANSACTION;")
-            self._in_transaction = True
+            try:
+                self._conn.execute("BEGIN TRANSACTION;")
+                self._in_transaction = True
+            except sqlite3.OperationalError:
+                pass
 
     def commit(self) -> None:
         """Commit active transaction."""
@@ -163,8 +164,9 @@ class SQLiteAdapter(DatabaseAdapter):
     def savepoint(self, name: str) -> None:
         """Create a savepoint."""
         if self._conn:
+            if not self._in_transaction:
+                self.begin_transaction()
             self._conn.execute(f"SAVEPOINT {name};")
-            self._in_transaction = True
 
     def rollback_to_savepoint(self, name: str) -> None:
         """Rollback to a named savepoint."""
@@ -177,6 +179,12 @@ class SQLiteAdapter(DatabaseAdapter):
             self.connect()
 
         assert self._conn is not None
+
+        # Oracle transactional behavior: DML starts an implicit transaction if none active
+        first_word = sql.strip().split()[0].upper() if sql.strip() else ""
+        if first_word in ("INSERT", "UPDATE", "DELETE") and not self._in_transaction:
+            self.begin_transaction()
+
         cursor = self._conn.cursor()
 
         try:
@@ -191,7 +199,7 @@ class SQLiteAdapter(DatabaseAdapter):
 
             if cursor.description:
                 columns = [desc[0] for desc in cursor.description]
-                column_types = ["TEXT" for _ in cursor.description]  # Default fallback type
+                column_types = ["TEXT" for _ in cursor.description]
                 rows = [list(row) for row in cursor.fetchall()]
 
             row_count = cursor.rowcount if cursor.rowcount >= 0 else len(rows)
