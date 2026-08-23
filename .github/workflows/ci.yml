@@ -32,18 +32,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -e .
 
       - name: Verify Ruff Code Style
         run: |
-          ruff check .
+          python -m ruff check .
 
       - name: Verify Ruff Formatting
         run: |
-          ruff format --check .
+          python -m ruff format --check .
 
       - name: Run Test Suite (Pytest)
         run: |
-          pytest -v
+          python -m pytest -v
 
       - name: Run Streamlit & Database Engine Smoke Test
         run: |
