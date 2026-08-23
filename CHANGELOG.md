@@ -5,6 +5,19 @@ All notable changes to **OraCLI 10G** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-streamlit-launch] - 2026-08-23
+
+### Added
+- **Streamlit Community Cloud Primary Entrypoint**: Full interactive Oracle SQL*Plus 10g workspace in `app.py`.
+- **Streamlit Configuration**: Theme, server, and headless settings in `.streamlit/config.toml`.
+- **Target Runtime & Dependency Pinning**: `runtime.txt` (Python 3.11) and pinned `requirements.txt`.
+- **Automated CI Pipeline**: `.github/workflows/ci.yml` running linting, 61+ pytest test cases, and smoke tests on push/PR.
+- **Deployment Verification Workflow**: `.github/workflows/deploy-check.yml` validating structure and compatibility.
+- **Health Check Monitoring**: `.github/workflows/health-check.yml` with retry and failure alerts using `STREAMLIT_APP_URL`.
+- **Smoke & Health Check Scripts**: `scripts/smoke_test.py` and `scripts/health_check.py`.
+- **Deployment Documentation**: Complete deployment, hibernation, and architecture manual in `docs/deployment.md`.
+- **Dependabot Integration**: `.github/dependabot.yml` for automated dependency updates.
+
 ## [0.3.0-core-db] - 2026-08-23
 
 ### Added

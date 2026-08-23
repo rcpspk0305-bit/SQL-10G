@@ -1,0 +1,39 @@
+name: Application Health Check
+
+on:
+  schedule:
+    # Run twice daily (every 12 hours) - reasonable health monitoring without platform abuse
+    - cron: "0 */12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitor-app-health:
+    name: Check Streamlit App Availability
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Requests
+        run: |
+          pip install requests
+
+      - name: Run Health Check
+        env:
+          STREAMLIT_APP_URL: ${{ vars.STREAMLIT_APP_URL }}
+        run: |
+          if [ -z "$STREAMLIT_APP_URL" ]; then
+            echo "WARNING: STREAMLIT_APP_URL repository variable is not configured."
+            echo "Please set STREAMLIT_APP_URL in GitHub Repository Settings -> Secrets and variables -> Actions -> Variables."
+            exit 0
+          fi
+          python scripts/health_check.py --url "$STREAMLIT_APP_URL" --retries 3 --delay 10
