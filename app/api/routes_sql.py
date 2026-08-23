@@ -142,13 +142,15 @@ def execute_sql(req: ExecuteRequest, comp: ComponentsDep) -> ExecuteResponse:
             )
             results.append(res)
 
-            _query_history.append({
-                "sql": stmt_str,
-                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "duration_ms": round(elapsed, 2),
-                "success": True,
-                "rows": exec_out.result.row_count,
-            })
+            _query_history.append(
+                {
+                    "sql": stmt_str,
+                    "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "duration_ms": round(elapsed, 2),
+                    "success": True,
+                    "rows": exec_out.result.row_count,
+                }
+            )
 
         except OracleError as e:
             elapsed = (time.perf_counter() - start_time) * 1000.0
@@ -172,14 +174,16 @@ def execute_sql(req: ExecuteRequest, comp: ComponentsDep) -> ExecuteResponse:
             )
             results.append(res)
 
-            _query_history.append({
-                "sql": stmt_str,
-                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "duration_ms": round(elapsed, 2),
-                "success": False,
-                "error": str(e),
-                "rows": 0,
-            })
+            _query_history.append(
+                {
+                    "sql": stmt_str,
+                    "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "duration_ms": round(elapsed, 2),
+                    "success": False,
+                    "error": str(e),
+                    "rows": 0,
+                }
+            )
 
         except Exception as e:
             elapsed = (time.perf_counter() - start_time) * 1000.0
@@ -215,7 +219,15 @@ def execute_sql(req: ExecuteRequest, comp: ComponentsDep) -> ExecuteResponse:
 def buffer_is_sqlplus(stmt: str) -> bool:
     first_word = stmt.strip().split()[0].upper() if stmt.strip() else ""
     return first_word in {
-        "EXIT", "QUIT", "SHOW", "SET", "CLEAR", "HELP", "DESC", "DESCRIBE", "HOST"
+        "EXIT",
+        "QUIT",
+        "SHOW",
+        "SET",
+        "CLEAR",
+        "HELP",
+        "DESC",
+        "DESCRIBE",
+        "HOST",
     }
 
 

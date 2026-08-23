@@ -38,8 +38,8 @@ It reproduces the authentic command behavior, multiline prompts, Oracle SQL subs
 ## 🚀 Quickstart
 
 ### Prerequisites
-- **Python**: 3.12+
-- **Node.js**: 18+ (for frontend development)
+- **Python**: 3.11 (Standardized across Local, CI, and Streamlit Cloud)
+- **Pip**: Latest version
 
 ### 1. Installation & Environment Setup
 
@@ -52,9 +52,21 @@ cd SQL-10G
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .\.venv\Scripts\activate
 
-# Install backend dependencies
-pip install -e .
+# Install all backend and deployment dependencies
+pip install -r requirements.txt
 ```
+
+---
+
+### 2. Launching the Streamlit Web Application (Primary Cloud & Local UI)
+
+Start the interactive SQL*Plus 10g workspace:
+
+```bash
+streamlit run app.py
+```
+
+Navigate in your browser to: **`http://localhost:8501`**
 
 ---
 
@@ -153,10 +165,13 @@ ruff format .
 ---
 
 ## 📚 Documentation & Architecture
-
+ 
+- [docs/ci-failure-analysis.md](docs/ci-failure-analysis.md) — Root-cause analysis and resolution for CI/CD pipeline.
+- [docs/deployment.md](docs/deployment.md) — Streamlit Community Cloud setup, GitHub Actions workflows, and platform policies.
+- [docs/performance.md](docs/performance.md) — Low-carbon, low-compute architecture and optimization principles.
+- [docs/compatibility.md](docs/compatibility.md) — Complete 18-subsystem Oracle 10g SQL*Plus compatibility matrix.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture, subsystem pipeline, and data flow.
 - [ROADMAP.md](ROADMAP.md) — Project milestones and capabilities.
-- [COMPATIBILITY.md](COMPATIBILITY.md) — Oracle 10g SQL & SQL*Plus compatibility matrix.
 - [CAPABILITY-MAP.md](CAPABILITY-MAP.md) — Module decomposition and dependency graph.
 - [CHANGELOG.md](CHANGELOG.md) — Version history and release notes.
 

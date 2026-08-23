@@ -138,13 +138,7 @@ class SQLPlusCommandEngine:
                 + " "
                 + headers[2].ljust(col_widths[2])
             )
-            dashes_str = (
-                "-" * col_widths[0]
-                + " "
-                + "-" * col_widths[1]
-                + " "
-                + "-" * col_widths[2]
-            )
+            dashes_str = "-" * col_widths[0] + " " + "-" * col_widths[1] + " " + "-" * col_widths[2]
             out_lines.append(header_str)
             out_lines.append(dashes_str)
 

@@ -1,7 +1,10 @@
 """Comprehensive smoke test for CI/CD and Streamlit deployment validation."""
 
+import subprocess
 import sys
 import time
+
+import requests
 
 from app.cli.formatter import OutputFormatter
 from app.cli.session import Session
@@ -10,6 +13,56 @@ from app.database.sqlite_adapter import SQLiteAdapter
 from app.engine.errors import OracleError
 from app.engine.executor import SQLExecutor
 from app.engine.translator import SQLTranslator
+
+
+def verify_streamlit_live_startup(port: int = 8509, timeout_sec: int = 15) -> bool:
+    """Start Streamlit in headless mode, verify HTTP responsiveness, and cleanly terminate."""
+    print(f"[9/9] Testing Live Streamlit Server Startup (Port: {port})...")
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        "app.py",
+        f"--server.port={port}",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    url = f"http://127.0.0.1:{port}"
+    health_url = f"http://127.0.0.1:{port}/_stcore/health"
+
+    started_ok = False
+    start_time = time.time()
+    try:
+        while time.time() - start_time < timeout_sec:
+            try:
+                res = requests.get(health_url, timeout=1)
+                if res.status_code == 200:
+                    started_ok = True
+                    break
+            except Exception:
+                try:
+                    res2 = requests.get(url, timeout=1)
+                    if res2.status_code == 200:
+                        started_ok = True
+                        break
+                except Exception:
+                    pass
+            time.sleep(0.5)
+
+        if started_ok:
+            print("      PASS: Streamlit server started, responded 200 OK, and terminated cleanly.")
+        else:
+            print("      FAIL: Streamlit server did not respond within timeout.")
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+    return started_ok
 
 
 def run_smoke_test() -> bool:
@@ -21,7 +74,7 @@ def run_smoke_test() -> bool:
 
     try:
         # 1. Module and Engine Initialization
-        print("[1/8] Initializing Database Adapter & SQLExecutor...")
+        print("[1/9] Initializing Database Adapter & SQLExecutor...")
         db = SQLiteAdapter(":memory:")
         db.connect()
         executor = SQLExecutor(adapter=db, translator=SQLTranslator())
@@ -29,7 +82,7 @@ def run_smoke_test() -> bool:
         print("      PASS: SQLiteAdapter and SQLExecutor ready.")
 
         # 2. DDL & Constraints
-        print("[2/8] Testing DDL, Constraints & Cascade...")
+        print("[2/9] Testing DDL, Constraints & Cascade...")
         executor.execute(
             """
             CREATE TABLE departments (
@@ -55,7 +108,7 @@ def run_smoke_test() -> bool:
         print("      PASS: Tables created with PK, FK, UNIQUE, CHECK, DEFAULT, CASCADE.")
 
         # 3. DML Operations & Feedback
-        print("[3/8] Testing DML (INSERT, UPDATE, DELETE) with row feedback...")
+        print("[3/9] Testing DML (INSERT, UPDATE, DELETE) with row feedback...")
         ins_d = executor.execute("INSERT INTO departments VALUES (10, 'ENGINEERING');", session)
         assert ins_d.result.feedback_message == "1 row created."
 
@@ -78,7 +131,7 @@ def run_smoke_test() -> bool:
         print("      PASS: DML feedback messages verified.")
 
         # 4. TCL Transactions & Savepoints
-        print("[4/8] Testing TCL (COMMIT, SAVEPOINT, ROLLBACK TO SAVEPOINT)...")
+        print("[4/9] Testing TCL (COMMIT, SAVEPOINT, ROLLBACK TO SAVEPOINT)...")
         c_res = executor.execute("COMMIT;", session)
         assert c_res.result.feedback_message == "Commit complete."
 
@@ -89,7 +142,7 @@ def run_smoke_test() -> bool:
         print("      PASS: Real ACID transactions & savepoint rollbacks confirmed.")
 
         # 5. Queries, Joins, Aggregates, HAVING, MINUS
-        print("[5/8] Testing Complex SELECT, GROUP BY, HAVING, AGGREGATES, MINUS...")
+        print("[5/9] Testing Complex SELECT, GROUP BY, HAVING, AGGREGATES, MINUS...")
         sel = executor.execute(
             """
             SELECT d.dept_name, COUNT(e.emp_id) AS total_emp, AVG(e.salary) AS avg_sal,
@@ -117,7 +170,7 @@ def run_smoke_test() -> bool:
         print("      PASS: Aggregates, GROUP BY, HAVING, and MINUS executed accurately.")
 
         # 6. Views & Materialized Views
-        print("[6/8] Testing Views & Materialized Views snapshot lifecycle...")
+        print("[6/9] Testing Views & Materialized Views snapshot lifecycle...")
         v_res = executor.execute(
             "CREATE VIEW emp_view AS SELECT emp_id, name FROM employees;",
             session,
@@ -135,7 +188,7 @@ def run_smoke_test() -> bool:
         print("      PASS: Standard views and Materialized views functioning.")
 
         # 7. DCL & SQL*Plus Commands
-        print("[7/8] Testing DCL Security (GRANT/REVOKE) and SQL*Plus Commands...")
+        print("[7/9] Testing DCL Security (GRANT/REVOKE) and SQL*Plus Commands...")
         user_sess = Session(user="DEVELOPER")
         executor.execute("GRANT SELECT ON employees TO DEVELOPER;", session)
         user_sel = executor.execute("SELECT * FROM employees;", user_sess)
@@ -157,10 +210,16 @@ def run_smoke_test() -> bool:
         print("      PASS: DCL ORA-01031 security and SQL*Plus formatting verified.")
 
         # 8. Streamlit App Importability
-        print("[8/8] Testing Streamlit Application Module Load...")
+        print("[8/9] Testing Streamlit Application Module Load...")
         import app
+
         assert hasattr(app, "render_app") or hasattr(app, "main") or app is not None
         print("      PASS: Streamlit app.py imported cleanly.")
+
+        # 9. Live Streamlit Headless Server Startup & Response Check
+        live_ok = verify_streamlit_live_startup(port=8509, timeout_sec=12)
+        if not live_ok:
+            raise RuntimeError("Live Streamlit server startup verification failed.")
 
         db.close()
         elapsed = time.time() - start_time
@@ -173,6 +232,7 @@ def run_smoke_test() -> bool:
     except Exception as e:
         print(f"\nSMOKE TEST FAILED with error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

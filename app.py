@@ -122,11 +122,7 @@ def execute_sql_batch(raw_sql: str) -> list[dict]:
                     }
                 )
         except OracleError as err:
-            err_msg = (
-                f"\n{err.code}: {err.message}\n"
-                if err.code
-                else f"\nError: {err.message}\n"
-            )
+            err_msg = f"\n{err.code}: {err.message}\n" if err.code else f"\nError: {err.message}\n"
             results.append(
                 {
                     "sql": stmt,
@@ -236,7 +232,7 @@ def render_app():
 
         if "latest_results" in st.session_state:
             for idx, res in enumerate(st.session_state["latest_results"]):
-                st.markdown(f"**Statement {idx+1}:** `{res['sql']}`")
+                st.markdown(f"**Statement {idx + 1}:** `{res['sql']}`")
                 tab_text, tab_grid = st.tabs(["📟 SQL*Plus Terminal Output", "📊 Data Grid"])
 
                 with tab_text:
