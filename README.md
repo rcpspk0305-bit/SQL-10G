@@ -1,45 +1,85 @@
-<<<<<<< HEAD
-# OraCLI 10G
+# OraCLI 10G Web
 
-**Oracle 10g SQL\*Plus-Compatible Educational Database Environment**
+**Oracle 10g SQL\*Plus-Compatible Educational Web Environment & CLI**
 
-OraCLI 10G is a lightweight, local, offline educational tool designed for database laboratory practice and college coursework. It reproduces the authentic command behavior, multiline prompts, Oracle SQL subset, datatypes, and formatted table output of Oracle SQL*Plus 10g using an independent Python architecture and SQLite storage engine.
+OraCLI 10G is an independent, lightweight, browser-based and command-line educational database platform built specifically for university database laboratory coursework, examination preparation, and Oracle SQL skill development.
 
----
-
-## Key Features
-
-- **SQL\*Plus Interactive Terminal**: True SQL*Plus experience with banner, `SQL>` prompt, continuation line numbering (`  2  `, `  3  `), and semicolon/slash completion.
-- **Oracle Datatype Emulation**: Native parsing of Oracle types including `NUMBER`, `NUMBER(p,s)`, `VARCHAR2(size)`, `CHAR(size)`, `DATE`, `TIMESTAMP`, `CLOB`, `BLOB`, `INTEGER`.
-- **Oracle SQL Subset**: Full support for DDL (`CREATE TABLE`, `DROP TABLE`, `ALTER TABLE`, `TRUNCATE TABLE`) and DML (`INSERT`, `SELECT`, `UPDATE`, `DELETE`).
-- **SQL\*Plus Client Commands**: `EXIT`, `QUIT`, `SHOW USER`, `SET PAGESIZE`, `SET LINESIZE`, `SET HEADING`, `SET FEEDBACK`, `SET NULL`, `CLEAR SCREEN`.
-- **Authentic Formatted Output**: Uppercase table headers, exact underline dashes, right-aligned numeric data, left-aligned strings, and feedback messages (`Table created.`, `1 row created.`, `N rows selected.`).
-- **Oracle Error Mapping**: Translates internal database errors into standard Oracle codes (`ORA-00942`, `ORA-00904`, `ORA-00001`, `ORA-01400`, `ORA-00933`).
+It reproduces the authentic command behavior, multiline prompts, Oracle SQL subset, datatypes, and formatted table output of **Oracle SQL\*Plus 10g** using an independent Python + FastAPI backend and React + TypeScript frontend on top of a local SQLite engine.
 
 ---
 
-## Quickstart
+## 🌟 Key Features
+
+- **🌐 SQL\*Plus Web Console (`/console`)**:
+  - Full-featured SQL editor with multiline editing, line numbering, syntax hints, and `Ctrl+Enter` shortcut to run.
+  - Authentic SQL*Plus monospace terminal output (uppercase headers, dashed underlines, right-aligned numbers, left-aligned strings, and feedback messages).
+  - Dual view toggle: switch between **SQL*Plus Monospace Text** and interactive **Tabular Data Grid**.
+- **📊 Database Explorer (`/tables`)**:
+  - Visual schema inspector displaying user tables, columns, Oracle datatype representations, Primary Key indicators, and row counts.
+  - Quick query generators (`SELECT *`, `DESC <table_name>`).
+- **🎓 College Lab & Exam Mode (`/lab`)**:
+  - Pre-loaded university laboratory exercises (DDL, Constraints, DML, Joins, Aggregates, Views).
+  - Practice mode with step-by-step hints and timed Exam Mode with automated state validation.
+- **📜 SQL Scripts Library (`/scripts`)**:
+  - Pre-packaged schema scripts (`student_schema.sql`, `employee_dept.sql`) with download and one-click execution.
+- **⚡ PL/SQL Workspace (`/plsql`)**:
+  - Anonymous blocks (`DECLARE ... BEGIN ... END; /`), variables, and `DBMS_OUTPUT` capture buffer.
+- **🕒 Query History (`/history`)**:
+  - Audit log of executed statements with timestamps, execution duration, and instant re-run button.
+- **🗃️ Oracle Datatype Emulation**:
+  - Native parsing of `NUMBER`, `NUMBER(p,s)`, `VARCHAR2(size)`, `CHAR(size)`, `DATE`, `TIMESTAMP`, `CLOB`, `BLOB`, `INTEGER`.
+- **🧮 Oracle Functions**:
+  - `NVL`, `SYSDATE`, `UPPER`, `LOWER`, `LENGTH`, `SUBSTR`, `INSTR`, `ROUND`, `TRUNC`, `MOD`.
+- **🚨 Canonical Oracle Error Codes**:
+  - Maps database errors into standard Oracle codes (`ORA-00942`, `ORA-00904`, `ORA-00001`, `ORA-01400`, `ORA-00933`, `ORA-00955`).
+
+---
+
+## 🚀 Quickstart
 
 ### Prerequisites
-- Python 3.12+
+- **Python**: 3.12+
+- **Node.js**: 18+ (for frontend development)
 
-### Installation & Execution
+### 1. Installation & Environment Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/oracli.git
-cd oracli
+git clone https://github.com/rcpspk0305-bit/SQL-10G.git
+cd SQL-10G
 
-# Create virtual environment & install dependencies
+# Create and activate Python virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -e .
+source .venv/bin/activate  # On Windows: .\.venv\Scripts\activate
 
-# Launch SQL*Plus terminal
+# Install backend dependencies
+pip install -e .
+```
+
+---
+
+### 2. Launching the Web Application (Recommended)
+
+Start the unified server that hosts both the REST API and the React web application on port 8000:
+
+```bash
+python -m uvicorn app.api.server:app --host 127.0.0.1 --port 8000
+```
+
+Open your browser and navigate to:
+👉 **`http://localhost:8000`**
+
+---
+
+### 3. Launching in Terminal REPL Mode
+
+If you prefer the classic command-line SQL*Plus shell:
+
+```bash
 python main.py
 ```
 
-### Example Session
+**Example Terminal Session:**
 
 ```sql
 SQL*Plus: Release 10.2 Compatible Educational Edition
@@ -73,26 +113,55 @@ Disconnected from Oracle Database.
 
 ---
 
-## Testing & Quality
+## 🛠️ Frontend Development Mode (Vite Hot-Reload)
+
+To run the frontend with hot-module reloading during development:
 
 ```bash
-# Run test suite
-pytest
+# Terminal 1: Start FastAPI backend
+python -m uvicorn app.api.server:app --port 8000 --reload
 
-# Run linter
-ruff check .
+# Terminal 2: Start Vite dev server
+cd web
+npm run dev
+```
+
+Navigate to: **`http://localhost:5173`**
+
+To compile the production frontend bundle:
+
+```bash
+cd web
+npm run build
 ```
 
 ---
 
-## Architecture & Roadmap
+## 🧪 Testing & Code Quality
 
-For deep dives into the project design, please check:
-- [CAPABILITY-MAP.md](CAPABILITY-MAP.md) - Initiative decomposition and build order.
-- [SPEC-core.md](SPEC-core.md) - Core engine specification.
-- [docs/architecture.md](docs/architecture.md) - Architectural design & subsystem pipeline.
-- [docs/compatibility.md](docs/compatibility.md) - Oracle 10g compatibility matrix.
-=======
-# SQL-10G
-Oracle 10g SQL*Plus-compatible educational environment
->>>>>>> b2a448f20ad43e9d7f0b6a46b8725c16593c9f8e
+```bash
+# Run full automated test suite (27 passing tests)
+pytest
+
+# Run linter
+ruff check .
+
+# Format code
+ruff format .
+```
+
+---
+
+## 📚 Documentation & Architecture
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture, subsystem pipeline, and data flow.
+- [ROADMAP.md](ROADMAP.md) — Project milestones and capabilities.
+- [COMPATIBILITY.md](COMPATIBILITY.md) — Oracle 10g SQL & SQL*Plus compatibility matrix.
+- [CAPABILITY-MAP.md](CAPABILITY-MAP.md) — Module decomposition and dependency graph.
+- [CHANGELOG.md](CHANGELOG.md) — Version history and release notes.
+
+---
+
+## 📄 License
+
+This is an educational open-source project designed for learning database concepts. It is an independent implementation and is not affiliated with or endorsed by Oracle Corporation.

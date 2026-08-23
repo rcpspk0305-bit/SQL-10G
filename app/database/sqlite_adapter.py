@@ -30,9 +30,14 @@ class SQLiteAdapter(DatabaseAdapter):
     def connect(self) -> None:
         """Establish SQLite connection and initialize Oracle environment objects."""
         if self._conn is None:
+            if self.db_path != ":memory:":
+                from pathlib import Path
+
+                Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+
             self._conn = sqlite3.connect(
                 self.db_path,
-                isolation_level=None,  # Autocommit mode by default; explicit transactions supported
+                isolation_level=None,  # Autocommit mode by default
                 check_same_thread=False,
             )
             # Enable foreign keys
