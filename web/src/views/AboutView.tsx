@@ -139,6 +139,29 @@ export const AboutView: React.FC = () => {
           </li>
         </ul>
       </div>
+
+      <div className="card" style={{ marginTop: '16px', textAlign: 'center', padding: '16px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+          Maintained by{' '}
+          <a
+            href="https://github.com/rcpspk0305-bit/SQL-10G.git"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}
+          >
+            Charan Rajanala
+          </a>
+          {' '}—{' '}
+          <a
+            href="https://github.com/rcpspk0305-bit/SQL-10G.git"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: 'var(--text-muted)', textDecoration: 'underline' }}
+          >
+            GitHub Repository
+          </a>
+        </p>
+      </div>
     </div>
   );
 };

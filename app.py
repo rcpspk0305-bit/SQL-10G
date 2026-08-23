@@ -168,6 +168,10 @@ def render_app():
     st.sidebar.markdown(f"**Connected User:** `{session.user}`")
     st.sidebar.markdown("**Database:** `In-Memory SQLite (Oracle Mode)`")
     st.sidebar.markdown(f"**Version:** `{APP_VERSION}`")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(
+        "Maintained by [Charan Rajanala](https://github.com/rcpspk0305-bit/SQL-10G.git)"
+    )
 
     if st.sidebar.button("🔄 Reset Database Session"):
         st.session_state["db_adapter"].close()
@@ -532,6 +536,18 @@ def render_app():
             },
         ]
         st.dataframe(pd.DataFrame(features_data), use_container_width=True)
+
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #888888; padding: 12px; font-size: 14px;'>"
+        "Maintained by <a href='https://github.com/rcpspk0305-bit/SQL-10G.git' "
+        "target='_blank' style='color: #0284c7; text-decoration: none; font-weight: bold;'>"
+        "Charan Rajanala</a> | "
+        "<a href='https://github.com/rcpspk0305-bit/SQL-10G.git' target='_blank' "
+        "style='color: #888888; text-decoration: none;'>GitHub Repository</a>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

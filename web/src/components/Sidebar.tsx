@@ -77,9 +77,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      <div className="sidebar-footer">
-        <span>Oracle 10.2.0.1 Emulation</span>
-        <span style={{ color: '#10b981' }}>● Online</span>
+      <div className="sidebar-footer" style={{ flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          <span>Oracle 10.2.0.1 Emulation</span>
+          <span style={{ color: '#10b981' }}>● Online</span>
+        </div>
+        <div style={{ fontSize: '11px', marginTop: '4px' }}>
+          Maintained by{' '}
+          <a
+            href="https://github.com/rcpspk0305-bit/SQL-10G.git"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}
+          >
+            Charan Rajanala
+          </a>
+        </div>
       </div>
     </aside>
   );
