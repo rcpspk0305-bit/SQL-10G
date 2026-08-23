@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # OraCLI 10G
 
 **Oracle 10g SQL\*Plus-Compatible Educational Database Environment**
@@ -91,3 +92,7 @@ For deep dives into the project design, please check:
 - [SPEC-core.md](SPEC-core.md) - Core engine specification.
 - [docs/architecture.md](docs/architecture.md) - Architectural design & subsystem pipeline.
 - [docs/compatibility.md](docs/compatibility.md) - Oracle 10g compatibility matrix.
+=======
+# SQL-10G
+Oracle 10g SQL*Plus-compatible educational environment
+>>>>>>> b2a448f20ad43e9d7f0b6a46b8725c16593c9f8e
