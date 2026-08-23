@@ -1,5 +1,6 @@
 """Oracle SQL to SQLite transpiler using SQLGlot and custom AST transforms."""
 
+import re
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -21,10 +22,20 @@ class SQLCommandType(Enum):
     ALTER_TABLE = auto()
     DROP_TABLE = auto()
     TRUNCATE_TABLE = auto()
+    RENAME_TABLE = auto()
     CREATE_VIEW = auto()
     DROP_VIEW = auto()
     CREATE_INDEX = auto()
     DROP_INDEX = auto()
+    CREATE_MVIEW = auto()
+    REFRESH_MVIEW = auto()
+    DROP_MVIEW = auto()
+    GRANT = auto()
+    REVOKE = auto()
+    COMMIT = auto()
+    ROLLBACK = auto()
+    SAVEPOINT = auto()
+    ROLLBACK_TO_SAVEPOINT = auto()
     OTHER = auto()
 
 
@@ -36,6 +47,7 @@ class TranspiledQuery:
     sqlite_sql: str
     command_type: SQLCommandType
     target_object: str | None = None
+    extra_metadata: dict | None = None
 
 
 class SQLTranslator:
@@ -47,48 +59,64 @@ class SQLTranslator:
 
     def detect_command_type(self, sql: str) -> SQLCommandType:
         """Quickly detect the primary SQL command type."""
-        first_token = sql.strip().split()[0].upper() if sql.strip() else ""
-        match first_token:
-            case "SELECT":
-                return SQLCommandType.SELECT
-            case "INSERT":
-                return SQLCommandType.INSERT
-            case "UPDATE":
-                return SQLCommandType.UPDATE
-            case "DELETE":
-                return SQLCommandType.DELETE
-            case "CREATE":
-                tokens = sql.strip().split()
-                if len(tokens) > 1:
-                    second = tokens[1].upper()
-                    if second == "TABLE":
-                        return SQLCommandType.CREATE_TABLE
-                    if second == "VIEW":
-                        return SQLCommandType.CREATE_VIEW
-                    if second == "INDEX" or (
-                        len(tokens) > 2
-                        and tokens[1].upper() == "UNIQUE"
-                        and tokens[2].upper() == "INDEX"
-                    ):
-                        return SQLCommandType.CREATE_INDEX
-                return SQLCommandType.OTHER
-            case "DROP":
-                tokens = sql.strip().split()
-                if len(tokens) > 1:
-                    second = tokens[1].upper()
-                    if second == "TABLE":
-                        return SQLCommandType.DROP_TABLE
-                    if second == "VIEW":
-                        return SQLCommandType.DROP_VIEW
-                    if second == "INDEX":
-                        return SQLCommandType.DROP_INDEX
-                return SQLCommandType.OTHER
-            case "ALTER":
-                return SQLCommandType.ALTER_TABLE
-            case "TRUNCATE":
-                return SQLCommandType.TRUNCATE_TABLE
-            case _:
-                return SQLCommandType.OTHER
+        tokens = sql.strip().split()
+        if not tokens:
+            return SQLCommandType.OTHER
+
+        first = tokens[0].upper()
+        second = tokens[1].upper() if len(tokens) > 1 else ""
+        third = tokens[2].upper() if len(tokens) > 2 else ""
+
+        if first == "SELECT":
+            return SQLCommandType.SELECT
+        if first == "INSERT":
+            return SQLCommandType.INSERT
+        if first == "UPDATE":
+            return SQLCommandType.UPDATE
+        if first == "DELETE":
+            return SQLCommandType.DELETE
+        if first == "COMMIT":
+            return SQLCommandType.COMMIT
+        if first == "ROLLBACK":
+            if second == "TO":
+                return SQLCommandType.ROLLBACK_TO_SAVEPOINT
+            return SQLCommandType.ROLLBACK
+        if first == "SAVEPOINT":
+            return SQLCommandType.SAVEPOINT
+        if first == "GRANT":
+            return SQLCommandType.GRANT
+        if first == "REVOKE":
+            return SQLCommandType.REVOKE
+        if first == "REFRESH" and second == "MATERIALIZED" and third == "VIEW":
+            return SQLCommandType.REFRESH_MVIEW
+        if first == "CREATE":
+            if second == "TABLE":
+                return SQLCommandType.CREATE_TABLE
+            if second == "VIEW" or (second == "OR" and third == "REPLACE"):
+                return SQLCommandType.CREATE_VIEW
+            if second == "MATERIALIZED" and third == "VIEW":
+                return SQLCommandType.CREATE_MVIEW
+            if second == "INDEX" or (second == "UNIQUE" and third == "INDEX"):
+                return SQLCommandType.CREATE_INDEX
+            return SQLCommandType.OTHER
+        if first == "DROP":
+            if second == "TABLE":
+                return SQLCommandType.DROP_TABLE
+            if second == "VIEW":
+                return SQLCommandType.DROP_VIEW
+            if second == "MATERIALIZED" and third == "VIEW":
+                return SQLCommandType.DROP_MVIEW
+            if second == "INDEX":
+                return SQLCommandType.DROP_INDEX
+            return SQLCommandType.OTHER
+        if first == "ALTER":
+            return SQLCommandType.ALTER_TABLE
+        if first == "TRUNCATE":
+            return SQLCommandType.TRUNCATE_TABLE
+        if first == "RENAME":
+            return SQLCommandType.RENAME_TABLE
+
+        return SQLCommandType.OTHER
 
     def _transform_data_types(self, expression: exp.Expression) -> exp.Expression:
         """Walk AST and transform Oracle data types to SQLite types."""
@@ -113,24 +141,155 @@ class SQLTranslator:
             cleaned_sql = cleaned_sql[:-1].strip()
 
         cmd_type = self.detect_command_type(cleaned_sql)
+        tokens = cleaned_sql.split()
 
+        # Handle specialized commands that do not need full SQLGlot AST
+        if cmd_type == SQLCommandType.COMMIT:
+            return TranspiledQuery(cleaned_sql, "COMMIT;", cmd_type)
+        if cmd_type == SQLCommandType.ROLLBACK:
+            return TranspiledQuery(cleaned_sql, "ROLLBACK;", cmd_type)
+        if cmd_type == SQLCommandType.SAVEPOINT:
+            sp_name = tokens[1] if len(tokens) > 1 else "sp1"
+            return TranspiledQuery(
+                cleaned_sql,
+                f"SAVEPOINT {sp_name};",
+                cmd_type,
+                target_object=sp_name,
+            )
+        if cmd_type == SQLCommandType.ROLLBACK_TO_SAVEPOINT:
+            # ROLLBACK TO [SAVEPOINT] <name>
+            if len(tokens) > 3 and tokens[2].upper() == "SAVEPOINT":
+                sp_name = tokens[3]
+            elif len(tokens) > 2:
+                sp_name = tokens[2]
+            else:
+                sp_name = "sp1"
+            return TranspiledQuery(
+                cleaned_sql,
+                f"ROLLBACK TO SAVEPOINT {sp_name};",
+                cmd_type,
+                target_object=sp_name,
+            )
+
+        if cmd_type == SQLCommandType.TRUNCATE_TABLE:
+            # TRUNCATE TABLE <table>
+            table_name = tokens[2] if len(tokens) > 2 else tokens[1]
+            return TranspiledQuery(
+                cleaned_sql,
+                f"DELETE FROM {table_name};",
+                cmd_type,
+                target_object=table_name,
+            )
+
+        if cmd_type == SQLCommandType.RENAME_TABLE:
+            # RENAME <table> TO <new_table>
+            old_table = tokens[1]
+            new_table = tokens[3] if len(tokens) > 3 else tokens[2]
+            return TranspiledQuery(
+                cleaned_sql,
+                f"ALTER TABLE {old_table} RENAME TO {new_table};",
+                cmd_type,
+                target_object=new_table,
+            )
+
+        if cmd_type == SQLCommandType.GRANT:
+            # GRANT <priv1, priv2> ON <table> TO <user>
+            m = re.match(r"GRANT\s+(.+?)\s+ON\s+(\w+)\s+TO\s+(\w+)", cleaned_sql, re.IGNORECASE)
+            if m:
+                privs_str, table_name, user = m.groups()
+                privs = [p.strip().upper() for p in privs_str.split(",")]
+                return TranspiledQuery(
+                    cleaned_sql,
+                    cleaned_sql,
+                    cmd_type,
+                    target_object=table_name,
+                    extra_metadata={
+                        "privileges": privs,
+                        "grantee": user,
+                        "table_name": table_name,
+                    },
+                )
+
+        if cmd_type == SQLCommandType.REVOKE:
+            # REVOKE <priv1, priv2> ON <table> FROM <user>
+            m = re.match(r"REVOKE\s+(.+?)\s+ON\s+(\w+)\s+FROM\s+(\w+)", cleaned_sql, re.IGNORECASE)
+            if m:
+                privs_str, table_name, user = m.groups()
+                privs = [p.strip().upper() for p in privs_str.split(",")]
+                return TranspiledQuery(
+                    cleaned_sql,
+                    cleaned_sql,
+                    cmd_type,
+                    target_object=table_name,
+                    extra_metadata={
+                        "privileges": privs,
+                        "grantee": user,
+                        "table_name": table_name,
+                    },
+                )
+
+        if cmd_type == SQLCommandType.CREATE_MVIEW:
+            # CREATE MATERIALIZED VIEW <name> AS <select>
+            pattern = r"CREATE\s+MATERIALIZED\s+VIEW\s+(\w+)\s+AS\s+(.+)"
+            m = re.match(pattern, cleaned_sql, re.IGNORECASE | re.DOTALL)
+            if m:
+                mview_name, select_sql = m.groups()
+                select_transpiled = self.transpile(select_sql)
+                return TranspiledQuery(
+                    cleaned_sql,
+                    "",
+                    cmd_type,
+                    target_object=mview_name,
+                    extra_metadata={
+                        "mview_name": mview_name,
+                        "select_sql": select_sql,
+                        "transpiled_select_sql": select_transpiled.sqlite_sql,
+                    },
+                )
+
+        if cmd_type == SQLCommandType.REFRESH_MVIEW:
+            # REFRESH MATERIALIZED VIEW <name>
+            mview_name = tokens[3] if len(tokens) > 3 else tokens[1]
+            return TranspiledQuery(
+                cleaned_sql,
+                "",
+                cmd_type,
+                target_object=mview_name,
+                extra_metadata={"mview_name": mview_name},
+            )
+
+        if cmd_type == SQLCommandType.DROP_MVIEW:
+            # DROP MATERIALIZED VIEW <name>
+            mview_name = tokens[3] if len(tokens) > 3 else tokens[1]
+            return TranspiledQuery(
+                cleaned_sql,
+                "",
+                cmd_type,
+                target_object=mview_name,
+                extra_metadata={"mview_name": mview_name},
+            )
+
+        # Standard SQL transpilation via SQLGlot
         try:
             parsed = sqlglot.parse_one(cleaned_sql, read=self.oracle_dialect)
         except Exception as e:
-            # Check if sqlglot error can be sanitized or fallback to basic parser
             raise ORA00933SQLCommandNotProperlyEnded(str(e)) from e
 
-        # Extract target object if applicable
+        # Extract target object
         target_obj = None
         if isinstance(parsed, exp.Create):
             if parsed.this and hasattr(parsed.this, "name"):
                 target_obj = parsed.this.name
-        elif isinstance(parsed, exp.Insert):
+        elif isinstance(parsed, (exp.Insert, exp.Update, exp.Delete)):
             if parsed.this and hasattr(parsed.this, "name"):
                 target_obj = parsed.this.name
         elif isinstance(parsed, exp.Drop):
             if parsed.this and hasattr(parsed.this, "name"):
                 target_obj = parsed.this.name
+        elif isinstance(parsed, exp.Select):
+            from_clause = parsed.find(exp.From)
+            if from_clause and from_clause.this and hasattr(from_clause.this, "name"):
+                target_obj = from_clause.this.name
 
         # Transform Oracle datatypes to SQLite equivalents
         transformed = self._transform_data_types(parsed)

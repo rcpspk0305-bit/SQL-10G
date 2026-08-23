@@ -5,6 +5,19 @@ All notable changes to **OraCLI 10G** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-core-db] - 2026-08-23
+
+### Added
+- **Complete DDL Subsystem**: Full support for `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, `TRUNCATE TABLE`, `RENAME TABLE`, `CREATE INDEX`, `DROP INDEX`, `CREATE VIEW`, `DROP VIEW`.
+- **DCL Educational Security & Privileges**: `GRANT` and `REVOKE` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `ALL` with `_oracli_privileges` catalog and `ORA-01031: insufficient privileges` enforcement.
+- **TCL Real Transaction Subsystem**: Full ACID transaction controls with `COMMIT`, `ROLLBACK`, `SAVEPOINT <name>`, `ROLLBACK TO [SAVEPOINT] <name>`.
+- **Advanced Query Operations**: Full support for `WHERE`, `ORDER BY` (ASC/DESC/multi-column/alias), `GROUP BY`, `HAVING` (evaluated post-aggregation), `JOIN` (INNER, LEFT, CROSS), `UNION`, `INTERSECT`, and `MINUS` (`EXCEPT`).
+- **Aggregates**: `COUNT()`, `SUM()`, `AVG()`, `MIN()`, `MAX()` with multi-expression projection.
+- **Constraints & Cascade**: Support for `PRIMARY KEY`, `FOREIGN KEY ... ON DELETE CASCADE`, `UNIQUE`, `NOT NULL`, `CHECK`, `DEFAULT`.
+- **Materialized Views**: Emulated snapshot table layer with `CREATE MATERIALIZED VIEW`, `REFRESH MATERIALIZED VIEW`, and `DROP MATERIALIZED VIEW`.
+- **SQL*Plus Client Commands**: Implemented `DESC` / `DESCRIBE`, `SHOW USER`, `SET`, `CLEAR`, `LIST`, `RUN`, `SPOOL`, `COLUMN`, `EXIT`, `QUIT`.
+- **Web UI Quick Palette & Live Matrix**: Quick-insert database operations bar, live feature compatibility matrix, and 18-part lab exercises.
+
 ## [0.2.0-web] - 2026-08-23
 
 ### Added

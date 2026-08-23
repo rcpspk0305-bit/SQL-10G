@@ -2,58 +2,88 @@ import React, { useState } from 'react';
 import { GraduationCap, CheckCircle2, Play, BookOpen } from 'lucide-react';
 import { LabExercise } from '../types';
 
-const LAB_EXERCISES: LabExercise[] = [
+const FULL_LAB_EXERCISES: LabExercise[] = [
   {
     id: 1,
-    title: 'Lab 1: Create Student Table & Constraints',
+    title: 'Lab 1: DDL & Constraints Setup',
     category: 'DDL & Constraints',
-    description: 'Create a STUDENT table with ROLLNO as primary key, NAME as VARCHAR2(50), and CGPA as NUMBER(3,2).',
+    description: 'Create DEPARTMENT and STUDENT tables with Primary Key, Foreign Key with ON DELETE CASCADE, Unique, and Check constraints.',
     instructions: [
-      'Define ROLLNO as NUMBER with PRIMARY KEY constraint.',
-      'Define NAME as VARCHAR2(50) NOT NULL.',
-      'Define CGPA as NUMBER(3,2).',
+      'Create DEPARTMENT table (dept_id NUMBER PRIMARY KEY, dept_name VARCHAR2(50) UNIQUE).',
+      'Create STUDENT table with foreign key referencing department with ON DELETE CASCADE.',
+      'Add CHECK constraint for CGPA (0 to 10).',
     ],
-    initial_sql: `CREATE TABLE student (\n    rollno NUMBER PRIMARY KEY,\n    name VARCHAR2(50) NOT NULL,\n    cgpa NUMBER(3,2)\n);`,
-    solution_hint: `Use CREATE TABLE student (rollno NUMBER PRIMARY KEY, name VARCHAR2(50) NOT NULL, cgpa NUMBER(3,2));`,
-    validation_query: `SELECT * FROM student;`,
+    initial_sql: `CREATE TABLE department (\n    dept_id NUMBER PRIMARY KEY,\n    dept_name VARCHAR2(50) UNIQUE\n);\n\nCREATE TABLE student (\n    rollno NUMBER PRIMARY KEY,\n    name VARCHAR2(50) NOT NULL,\n    cgpa NUMBER(3,2) CHECK (cgpa >= 0 AND cgpa <= 10),\n    dept_id NUMBER,\n    FOREIGN KEY (dept_id) REFERENCES department(dept_id) ON DELETE CASCADE\n);`,
+    solution_hint: 'CREATE TABLE department ...; CREATE TABLE student ...;',
+    validation_query: 'SELECT * FROM department;',
   },
   {
     id: 2,
-    title: 'Lab 2: DML Insert Records',
-    category: 'DML Operations',
-    description: 'Insert three student records into the STUDENT table.',
+    title: 'Lab 2: DML & Transactions (TCL)',
+    category: 'DML & TCL',
+    description: 'Insert records into DEPARTMENT and STUDENT, create a SAVEPOINT, perform updates, rollback to savepoint, and commit.',
     instructions: [
-      'Insert (101, "Rahul", 8.70)',
-      'Insert (102, "Priya", 9.10)',
-      'Insert (103, "Amit", 7.80)',
+      'Insert 2 departments (10, "CSE") and (20, "ECE").',
+      'Insert 3 students.',
+      'Use SAVEPOINT, UPDATE, ROLLBACK TO, and COMMIT.',
     ],
-    initial_sql: `INSERT INTO student VALUES (101, 'Rahul', 8.7);\nINSERT INTO student VALUES (102, 'Priya', 9.1);\nINSERT INTO student VALUES (103, 'Amit', 7.8);\nSELECT * FROM student;`,
-    solution_hint: `Use INSERT INTO student VALUES (...);`,
-    validation_query: `SELECT COUNT(*) FROM student;`,
+    initial_sql: `INSERT INTO department VALUES (10, 'CSE');\nINSERT INTO department VALUES (20, 'ECE');\n\nINSERT INTO student VALUES (101, 'Rahul', 8.7, 10);\nINSERT INTO student VALUES (102, 'Priya', 9.1, 10);\nINSERT INTO student VALUES (103, 'Arjun', 7.8, 20);\n\nSAVEPOINT sp1;\nUPDATE student SET cgpa = 9.5 WHERE rollno = 101;\nROLLBACK TO sp1;\nCOMMIT;\n\nSELECT * FROM student;`,
+    solution_hint: 'Use SAVEPOINT sp1; ... ROLLBACK TO sp1; COMMIT;',
+    validation_query: 'SELECT COUNT(*) FROM student;',
   },
   {
     id: 3,
-    title: 'Lab 3: Aggregate Functions & NVL',
-    category: 'SQL Functions',
-    description: 'Compute the average CGPA, highest CGPA, and total count of students.',
+    title: 'Lab 3: Aggregates, GROUP BY & HAVING',
+    category: 'Querying',
+    description: 'Calculate total count, average CGPA, highest CGPA, and lowest CGPA grouped by department with HAVING filter.',
     instructions: [
-      'Query AVG(cgpa), MAX(cgpa), and COUNT(*).',
+      'GROUP BY dept_id.',
+      'Calculate COUNT(*), AVG(cgpa), MAX(cgpa), MIN(cgpa).',
+      'Filter departments where AVG(cgpa) > 8 using HAVING.',
     ],
-    initial_sql: `SELECT COUNT(*) AS total_students, ROUND(AVG(cgpa), 2) AS avg_cgpa, MAX(cgpa) AS highest_cgpa FROM student;`,
-    solution_hint: `SELECT COUNT(*), AVG(cgpa), MAX(cgpa) FROM student;`,
-    validation_query: `SELECT AVG(cgpa) FROM student;`,
+    initial_sql: `SELECT dept_id,\n       COUNT(*) AS total_students,\n       AVG(cgpa) AS average_cgpa,\n       MAX(cgpa) AS highest_cgpa,\n       MIN(cgpa) AS lowest_cgpa\nFROM student\nGROUP BY dept_id\nHAVING AVG(cgpa) > 8\nORDER BY average_cgpa DESC;`,
+    solution_hint: 'SELECT dept_id, COUNT(*), AVG(cgpa) ... GROUP BY dept_id HAVING AVG(cgpa) > 8;',
+    validation_query: 'SELECT AVG(cgpa) FROM student GROUP BY dept_id;',
   },
   {
     id: 4,
-    title: 'Lab 4: Create View for Distinction Students',
+    title: 'Lab 4: Views & Materialized Views',
     category: 'Views',
-    description: 'Create a VIEW named HONORS_STUDENTS for students with CGPA >= 8.5.',
+    description: 'Create a standard VIEW and an emulated MATERIALIZED VIEW with manual snapshot refresh.',
     instructions: [
-      'Use CREATE VIEW honors_students AS SELECT ... WHERE cgpa >= 8.5;',
+      'Create VIEW topper_view for students with CGPA >= 8.5.',
+      'Create MATERIALIZED VIEW student_summary grouped by department.',
+      'Refresh the materialized view.',
     ],
-    initial_sql: `CREATE VIEW honors_students AS\nSELECT rollno, name, cgpa\nFROM student\nWHERE cgpa >= 8.5;\n\nSELECT * FROM honors_students;`,
-    solution_hint: `CREATE VIEW honors_students AS SELECT * FROM student WHERE cgpa >= 8.5;`,
-    validation_query: `SELECT * FROM honors_students;`,
+    initial_sql: `CREATE VIEW topper_view AS\nSELECT rollno, name, cgpa\nFROM student\nWHERE cgpa >= 8.5;\n\nSELECT * FROM topper_view;\n\nCREATE MATERIALIZED VIEW student_summary AS\nSELECT dept_id, AVG(cgpa) AS avg_cgpa\nFROM student\nGROUP BY dept_id;\n\nREFRESH MATERIALIZED VIEW student_summary;\nSELECT * FROM student_summary;`,
+    solution_hint: 'CREATE VIEW ...; CREATE MATERIALIZED VIEW ...;',
+    validation_query: 'SELECT * FROM topper_view;',
+  },
+  {
+    id: 5,
+    title: 'Lab 5: Cascade Deletion & DCL Privileges',
+    category: 'Cascade & DCL',
+    description: 'Verify ON DELETE CASCADE when deleting a department, and test GRANT/REVOKE privileges.',
+    instructions: [
+      'Delete from DEPARTMENT where dept_id = 10 (auto deletes dependent students).',
+      'Grant SELECT on student to student_user.',
+      'Revoke SELECT on student from student_user.',
+    ],
+    initial_sql: `DELETE FROM department WHERE dept_id = 10;\nSELECT * FROM student;\n\nGRANT SELECT ON student TO student_user;\nREVOKE SELECT ON student FROM student_user;`,
+    solution_hint: 'DELETE FROM department WHERE dept_id = 10;',
+    validation_query: 'SELECT * FROM student;',
+  },
+  {
+    id: 6,
+    title: 'Lab 6: Full MVP Acceptance Test',
+    category: 'Comprehensive Exam',
+    description: 'Execute the complete end-to-end multi-table Oracle 10g database coursework lifecycle.',
+    instructions: [
+      'Executes DDL, Foreign Keys, CASCADE, DML, TCL, Aggregates, GROUP BY, HAVING, Views, Savepoints, Rollbacks, and DCL in one unified script.',
+    ],
+    initial_sql: `CREATE TABLE department (\n    dept_id NUMBER PRIMARY KEY,\n    dept_name VARCHAR2(50) UNIQUE\n);\n\nCREATE TABLE student (\n    rollno NUMBER PRIMARY KEY,\n    name VARCHAR2(50) NOT NULL,\n    cgpa NUMBER(3,2),\n    dept_id NUMBER,\n    FOREIGN KEY (dept_id) REFERENCES department(dept_id) ON DELETE CASCADE\n);\n\nINSERT INTO department VALUES (10, 'CSE');\nINSERT INTO department VALUES (20, 'ECE');\n\nINSERT INTO student VALUES (101, 'Rahul', 8.7, 10);\nINSERT INTO student VALUES (102, 'Priya', 9.1, 10);\nINSERT INTO student VALUES (103, 'Arjun', 7.8, 20);\n\nCOMMIT;\n\nSELECT * FROM student ORDER BY cgpa DESC;\n\nSELECT dept_id,\n       COUNT(*) AS total_students,\n       AVG(cgpa) AS average_cgpa,\n       MAX(cgpa) AS highest_cgpa,\n       MIN(cgpa) AS lowest_cgpa\nFROM student\nGROUP BY dept_id\nHAVING AVG(cgpa) > 8\nORDER BY average_cgpa DESC;\n\nCREATE VIEW topper_view AS\nSELECT rollno, name, cgpa\nFROM student\nWHERE cgpa >= 8.5;\n\nSELECT * FROM topper_view;\n\nSAVEPOINT before_delete;\nDELETE FROM department WHERE dept_id = 10;\nROLLBACK TO before_delete;\nCOMMIT;\n\nGRANT SELECT ON student TO student_user;\nREVOKE SELECT ON student FROM student_user;`,
+    solution_hint: 'Execute all statements sequentially.',
+    validation_query: 'SELECT COUNT(*) FROM student;',
   },
 ];
 
@@ -62,7 +92,7 @@ interface LabViewProps {
 }
 
 export const LabView: React.FC<LabViewProps> = ({ onLoadExercise }) => {
-  const [selectedExercise, setSelectedExercise] = useState<LabExercise>(LAB_EXERCISES[0]);
+  const [selectedExercise, setSelectedExercise] = useState<LabExercise>(FULL_LAB_EXERCISES[0]);
   const [mode, setMode] = useState<'practice' | 'exam'>('practice');
 
   return (
@@ -96,10 +126,10 @@ export const LabView: React.FC<LabViewProps> = ({ onLoadExercise }) => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px' }}>
         {/* Left Exercise List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {LAB_EXERCISES.map((ex) => (
+          {FULL_LAB_EXERCISES.map((ex) => (
             <div
               key={ex.id}
               className="card"

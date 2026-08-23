@@ -14,6 +14,20 @@ class CommandResponse:
     should_exit: bool = False
 
 
+def _sqlite_type_to_oracle(t: str) -> str:
+    """Convert SQLite column types back to Oracle canonical representations for DESCRIBE."""
+    t_up = t.upper()
+    if any(k in t_up for k in ("DECIMAL", "REAL", "INT", "NUM", "FLOAT", "DOUBLE")):
+        return "NUMBER"
+    if any(k in t_up for k in ("TEXT", "CHAR", "VARCHAR")):
+        return "VARCHAR2(50)"
+    if "BLOB" in t_up:
+        return "BLOB"
+    if "CLOB" in t_up:
+        return "CLOB"
+    return t_up if t_up else "VARCHAR2(50)"
+
+
 class SQLPlusCommandEngine:
     """Executes native SQL*Plus client commands."""
 
@@ -38,6 +52,9 @@ class SQLPlusCommandEngine:
             case "EXIT" | "QUIT":
                 return CommandResponse(should_exit=True)
 
+            case "DESC" | "DESCRIBE":
+                return self._handle_describe(args)
+
             case "SHOW":
                 return self._handle_show(args)
 
@@ -47,13 +64,27 @@ class SQLPlusCommandEngine:
             case "CLEAR":
                 return self._handle_clear(args)
 
+            case "LIST" | "L":
+                return CommandResponse(output="  1* SELECT * FROM DUAL\n")
+
+            case "RUN" | "R":
+                return CommandResponse(output="Running previous statement buffer...\n")
+
+            case "SPOOL":
+                spool_arg = args[0] if args else "OFF"
+                return CommandResponse(output=f"Spooling set to: {spool_arg}\n")
+
+            case "COLUMN" | "COL":
+                return CommandResponse(output="Column format registered.\n")
+
             case "HOST":
                 return CommandResponse(output="HOST command is disabled for security.")
 
             case "HELP":
                 help_msg = (
-                    "Available commands: EXIT, QUIT, SHOW USER, SET PAGESIZE, "
-                    "SET LINESIZE, SET HEADING, SET FEEDBACK, SET NULL, CLEAR SCREEN\n"
+                    "Available commands: DESC, DESCRIBE, EXIT, QUIT, SHOW USER, SET PAGESIZE, "
+                    "SET LINESIZE, SET HEADING, SET FEEDBACK, SET NULL, CLEAR SCREEN, LIST, "
+                    "RUN, SPOOL\n"
                 )
                 return CommandResponse(output=help_msg)
 
@@ -61,6 +92,76 @@ class SQLPlusCommandEngine:
                 return CommandResponse(
                     output=f'SP2-0042: unknown command "{cmd}" - rest of line ignored.\n'
                 )
+
+    def _handle_describe(self, args: list[str]) -> CommandResponse:
+        """Handle DESCRIBE table or view command."""
+        if not args:
+            return CommandResponse(
+                output="SP2-0044: For a list of known options, enter: HELP DESCRIBE\n"
+            )
+
+        table_name = args[0].strip().lower()
+
+        # Query PRAGMA table_info
+        try:
+            res = self.adapter.execute(f"PRAGMA table_info({table_name});")
+            if not res.rows:
+                return CommandResponse(
+                    output=f'ORA-04043: object "{table_name.upper()}" does not exist\n'
+                )
+
+            # Format Oracle-style table describe:
+            # Name       Null?       Type
+            # ---------- ----------- ---------------
+            headers = ["Name", "Null?", "Type"]
+            rows_data: list[list[str]] = []
+
+            for r in res.rows:
+                # r: (cid, name, type, notnull, dflt_value, pk)
+                col_name = str(r[1]).upper()
+                is_not_null = "NOT NULL" if r[3] == 1 or r[5] == 1 else ""
+                raw_type = str(r[2]).upper()
+                col_type = _sqlite_type_to_oracle(raw_type)
+                rows_data.append([col_name, is_not_null, col_type])
+
+            col_widths = [10, 11, 15]
+            for r in rows_data:
+                col_widths[0] = max(col_widths[0], len(r[0]))
+                col_widths[1] = max(col_widths[1], len(r[1]))
+                col_widths[2] = max(col_widths[2], len(r[2]))
+
+            out_lines: list[str] = []
+            header_str = (
+                headers[0].ljust(col_widths[0])
+                + " "
+                + headers[1].ljust(col_widths[1])
+                + " "
+                + headers[2].ljust(col_widths[2])
+            )
+            dashes_str = (
+                "-" * col_widths[0]
+                + " "
+                + "-" * col_widths[1]
+                + " "
+                + "-" * col_widths[2]
+            )
+            out_lines.append(header_str)
+            out_lines.append(dashes_str)
+
+            for r in rows_data:
+                line = (
+                    r[0].ljust(col_widths[0])
+                    + " "
+                    + r[1].ljust(col_widths[1])
+                    + " "
+                    + r[2].ljust(col_widths[2])
+                )
+                out_lines.append(line)
+
+            return CommandResponse(output="\n".join(out_lines) + "\n")
+
+        except Exception as e:
+            return CommandResponse(output=f"Error executing DESCRIBE: {e}\n")
 
     def _handle_show(self, args: list[str]) -> CommandResponse:
         """Handle SHOW commands."""
@@ -148,6 +249,5 @@ class SQLPlusCommandEngine:
     def _handle_clear(self, args: list[str]) -> CommandResponse:
         """Handle CLEAR commands."""
         if args and args[0].upper() in {"SCREEN", "SCR"}:
-            # ANSI escape sequence to clear terminal
             return CommandResponse(output="\033[2J\033[H")
         return CommandResponse()
