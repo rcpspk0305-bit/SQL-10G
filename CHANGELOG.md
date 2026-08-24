@@ -8,11 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0-streamlit-launch] - 2026-08-23
 
 ### Added
+- **Terminal Up/Down Arrow Command History & Local Persistence**: Interactive command history navigation with local persistent file storage (`~/.oracli_history`).
 - **Streamlit Community Cloud Primary Entrypoint**: Full interactive Oracle SQL*Plus 10g workspace in `app.py`.
 - **Streamlit Configuration**: Theme, server, and headless settings in `.streamlit/config.toml`.
 - **Target Runtime & Dependency Pinning**: `runtime.txt` (Python 3.11) and pinned `requirements.txt`.
-- **Automated CI Pipeline**: `.github/workflows/ci.yml` running linting, 61+ pytest test cases, and smoke tests on push/PR.
-- **Deployment Verification Workflow**: `.github/workflows/deploy-check.yml` validating structure and compatibility.
+- **Automated CI Pipeline**: `.github/workflows/ci.yml` running linting, 63+ pytest test cases, and smoke tests on push/PR.
 - **Health Check Monitoring**: `.github/workflows/health-check.yml` with retry and failure alerts using `STREAMLIT_APP_URL`.
 - **Smoke & Health Check Scripts**: `scripts/smoke_test.py` and `scripts/health_check.py`.
 - **Deployment Documentation**: Complete deployment, hibernation, and architecture manual in `docs/deployment.md`.
