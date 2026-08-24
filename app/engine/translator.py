@@ -78,10 +78,10 @@ class SQLTranslator:
         if first == "COMMIT":
             return SQLCommandType.COMMIT
         if first == "ROLLBACK":
-            if second == "TO":
+            if second and second not in ("", ";", "WORK"):
                 return SQLCommandType.ROLLBACK_TO_SAVEPOINT
             return SQLCommandType.ROLLBACK
-        if first == "SAVEPOINT":
+        if first == "SAVEPOINT" or (first == "SAVE" and second == "POINT"):
             return SQLCommandType.SAVEPOINT
         if first == "GRANT":
             return SQLCommandType.GRANT
@@ -118,6 +118,72 @@ class SQLTranslator:
 
         return SQLCommandType.OTHER
 
+    def _parse_alter_table(self, sql: str) -> dict | None:
+        """Parse Oracle ALTER TABLE statements including ADD column(s) and ADD CONSTRAINT."""
+        m = re.match(r"^ALTER\s+TABLE\s+(\w+)\s+ADD\s*(.*)$", sql, re.IGNORECASE | re.DOTALL)
+        if not m:
+            return None
+        tbl_name, body = m.groups()
+        body = body.strip()
+        if body.startswith("(") and body.endswith(")"):
+            body = body[1:-1].strip()
+
+        # Check if purely table-level constraint
+        if re.match(
+            r"^(CONSTRAINT\b|FOREIGN\s+KEY\b|PRIMARY\s+KEY\b|UNIQUE\b|CHECK\b)", body, re.IGNORECASE
+        ):
+            return {
+                "table": tbl_name,
+                "alter_type": "add_constraint",
+                "constraint": body,
+                "columns": [],
+            }
+
+        # Split by comma outside parentheses
+        parts = []
+        current = []
+        paren_depth = 0
+        for char in body:
+            if char == "(":
+                paren_depth += 1
+                current.append(char)
+            elif char == ")":
+                paren_depth -= 1
+                current.append(char)
+            elif char == "," and paren_depth == 0:
+                parts.append("".join(current).strip())
+                current = []
+            else:
+                current.append(char)
+        if current:
+            parts.append("".join(current).strip())
+
+        cols = []
+        constraints = []
+        for p in parts:
+            if re.match(
+                r"^(CONSTRAINT\b|FOREIGN\s+KEY\b|PRIMARY\s+KEY\b|UNIQUE\b|CHECK\b)",
+                p,
+                re.IGNORECASE,
+            ):
+                constraints.append(p)
+            else:
+                tokens = p.split()
+                if not tokens:
+                    continue
+                cname = tokens[0]
+                raw_type = tokens[1] if len(tokens) > 1 else "VARCHAR2(50)"
+                base_type = re.sub(r"\(.*?\)", "", raw_type).upper()
+                sqlite_type = map_oracle_type_to_sqlite(base_type)
+                cols.append({"name": cname, "type": sqlite_type, "full": p})
+
+        return {
+            "table": tbl_name,
+            "alter_type": "add_columns",
+            "columns": cols,
+            "constraints": constraints,
+        }
+
     def _transform_data_types(self, expression: exp.Expression) -> exp.Expression:
         """Walk AST and transform Oracle data types and functions for SQLite."""
 
@@ -146,6 +212,12 @@ class SQLTranslator:
         if cleaned_sql.endswith(";"):
             cleaned_sql = cleaned_sql[:-1].strip()
 
+        # Pre-normalize Oracle syntactic variations
+        if re.match(r"^SAVE\s+POINT\b", cleaned_sql, re.IGNORECASE):
+            cleaned_sql = re.sub(r"^SAVE\s+POINT\b", "SAVEPOINT", cleaned_sql, flags=re.IGNORECASE)
+        if re.match(r"^DELETE\s+(?!FROM\b)", cleaned_sql, re.IGNORECASE):
+            cleaned_sql = re.sub(r"^DELETE\s+", "DELETE FROM ", cleaned_sql, flags=re.IGNORECASE)
+
         cmd_type = self.detect_command_type(cleaned_sql)
         tokens = cleaned_sql.split()
 
@@ -155,7 +227,11 @@ class SQLTranslator:
         if cmd_type == SQLCommandType.ROLLBACK:
             return TranspiledQuery(cleaned_sql, "ROLLBACK;", cmd_type)
         if cmd_type == SQLCommandType.SAVEPOINT:
-            sp_name = tokens[1] if len(tokens) > 1 else "sp1"
+            sp_name = (
+                tokens[2]
+                if len(tokens) > 2 and tokens[0].upper() == "SAVE" and tokens[1].upper() == "POINT"
+                else (tokens[1] if len(tokens) > 1 else "sp1")
+            )
             return TranspiledQuery(
                 cleaned_sql,
                 f"SAVEPOINT {sp_name};",
@@ -163,11 +239,13 @@ class SQLTranslator:
                 target_object=sp_name,
             )
         if cmd_type == SQLCommandType.ROLLBACK_TO_SAVEPOINT:
-            # ROLLBACK TO [SAVEPOINT] <name>
-            if len(tokens) > 3 and tokens[2].upper() == "SAVEPOINT":
+            # ROLLBACK [TO] [SAVEPOINT] <name>
+            if len(tokens) > 3 and tokens[1].upper() == "TO" and tokens[2].upper() == "SAVEPOINT":
                 sp_name = tokens[3]
-            elif len(tokens) > 2:
+            elif len(tokens) > 2 and tokens[1].upper() == "TO":
                 sp_name = tokens[2]
+            elif len(tokens) > 1 and tokens[1].upper() not in ("TO", "WORK"):
+                sp_name = tokens[1]
             else:
                 sp_name = "sp1"
             return TranspiledQuery(
@@ -176,6 +254,37 @@ class SQLTranslator:
                 cmd_type,
                 target_object=sp_name,
             )
+
+        if cmd_type == SQLCommandType.ALTER_TABLE:
+            alter_info = self._parse_alter_table(cleaned_sql)
+            if alter_info:
+                target_table = alter_info["table"]
+                if alter_info["alter_type"] == "add_constraint":
+                    return TranspiledQuery(
+                        cleaned_sql,
+                        f"SELECT 1 FROM {target_table} LIMIT 0;",
+                        cmd_type,
+                        target_object=target_table,
+                        extra_metadata=alter_info,
+                    )
+                elif alter_info["alter_type"] == "add_columns":
+                    cols = alter_info["columns"]
+                    if cols:
+                        stmts = [
+                            f"ALTER TABLE {target_table} ADD COLUMN {c['name']} {c['type']};"
+                            for c in cols
+                        ]
+                        return TranspiledQuery(
+                            cleaned_sql,
+                            stmts[0],
+                            cmd_type,
+                            target_object=target_table,
+                            extra_metadata={
+                                "alter_type": "add_columns",
+                                "statements": stmts,
+                                "table": target_table,
+                            },
+                        )
 
         if cmd_type == SQLCommandType.CREATE_INDEX:
             # CREATE [UNIQUE] INDEX <name> ON <table> (<cols>)

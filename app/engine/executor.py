@@ -132,7 +132,24 @@ class SQLExecutor:
             query_result = QueryResult([], [], [], 0, feedback)
             return ExecutionOutput(transpiled, query_result, is_query=False)
 
-        # 5. Standard SQL Execution via Database Adapter
+        # 5. Multi-statement or Specialized ALTER TABLE Execution
+        if transpiled.command_type == SQLCommandType.ALTER_TABLE:
+            meta = transpiled.extra_metadata or {}
+            alter_type = meta.get("alter_type")
+            if alter_type == "add_columns":
+                stmts = meta.get("statements", [transpiled.sqlite_sql])
+                for stmt in stmts:
+                    self.adapter.execute(stmt)
+                feedback = self._generate_feedback(transpiled.command_type, 0)
+                query_result = QueryResult([], [], [], 0, feedback)
+                return ExecutionOutput(transpiled, query_result, is_query=False)
+            elif alter_type == "add_constraint":
+                self.adapter.execute(transpiled.sqlite_sql)
+                feedback = self._generate_feedback(transpiled.command_type, 0)
+                query_result = QueryResult([], [], [], 0, feedback)
+                return ExecutionOutput(transpiled, query_result, is_query=False)
+
+        # 6. Standard SQL Execution via Database Adapter
         query_result = self.adapter.execute(transpiled.sqlite_sql)
 
         # Generate Oracle SQL*Plus feedback message for DDL/DML
