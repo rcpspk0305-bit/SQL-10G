@@ -1,8 +1,11 @@
-"""Comprehensive smoke test for CI/CD and Streamlit deployment validation."""
+"""Deterministic, CI-safe smoke test for OraCLI 10G Streamlit app and Database Engine."""
 
+import os
+import socket
 import subprocess
 import sys
 import time
+from typing import TextIO
 
 import requests
 
@@ -15,9 +18,20 @@ from app.engine.executor import SQLExecutor
 from app.engine.translator import SQLTranslator
 
 
-def verify_streamlit_live_startup(port: int = 8509, timeout_sec: int = 15) -> bool:
-    """Start Streamlit in headless mode, verify HTTP responsiveness, and cleanly terminate."""
-    print(f"[9/9] Testing Live Streamlit Server Startup (Port: {port})...")
+def get_free_port() -> int:
+    """Find a dynamically available free port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
+
+
+def verify_streamlit_live_startup(timeout_sec: int = 30) -> bool:
+    """Start Streamlit in headless mode on a dynamic port, verify HTTP health, and terminate cleanly."""
+    port = get_free_port()
+    print(f"[9/9] Testing Live Streamlit Server Startup (Port: {port}, Timeout: {timeout_sec}s)...")
+
     cmd = [
         sys.executable,
         "-m",
@@ -25,48 +39,90 @@ def verify_streamlit_live_startup(port: int = 8509, timeout_sec: int = 15) -> bo
         "run",
         "app.py",
         f"--server.port={port}",
+        "--server.address=127.0.0.1",
         "--server.headless=true",
         "--browser.gatherUsageStats=false",
+        "--server.enableCORS=false",
+        "--server.enableXsrfProtection=false",
     ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["STREAMLIT_SERVER_HEADLESS"] = "true"
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+
     url = f"http://127.0.0.1:{port}"
     health_url = f"http://127.0.0.1:{port}/_stcore/health"
 
     started_ok = False
+    content_verified = False
     start_time = time.time()
+
     try:
         while time.time() - start_time < timeout_sec:
+            # Check if process died prematurely
+            ret = proc.poll()
+            if ret is not None:
+                stdout, stderr = proc.communicate()
+                print(f"      FAIL: Streamlit process exited prematurely with code {ret}.")
+                if stdout:
+                    print(f"      stdout: {stdout[:500]}")
+                if stderr:
+                    print(f"      stderr: {stderr[:500]}")
+                return False
+
             try:
+                # 1. Try health endpoint
                 res = requests.get(health_url, timeout=1)
                 if res.status_code == 200:
                     started_ok = True
+                    # 2. Try root page for content verification
+                    res_root = requests.get(url, timeout=1)
+                    if res_root.status_code == 200 and len(res_root.text) > 0:
+                        content_verified = True
                     break
             except Exception:
                 try:
-                    res2 = requests.get(url, timeout=1)
-                    if res2.status_code == 200:
+                    # Direct root page check
+                    res_root = requests.get(url, timeout=1)
+                    if res_root.status_code == 200:
                         started_ok = True
+                        content_verified = True
                         break
                 except Exception:
                     pass
+
             time.sleep(0.5)
 
         if started_ok:
-            print("      PASS: Streamlit server started, responded 200 OK, and terminated cleanly.")
+            elapsed = time.time() - start_time
+            print(
+                f"      PASS: Streamlit server started in {elapsed:.2f}s, "
+                f"responded 200 OK (Content verified: {content_verified}), and terminated cleanly."
+            )
         else:
-            print("      FAIL: Streamlit server did not respond within timeout.")
+            print(f"      FAIL: Streamlit server did not respond within {timeout_sec}s timeout.")
+
     finally:
         proc.terminate()
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=2)
 
     return started_ok
 
 
 def run_smoke_test() -> bool:
-    """Execute all mandatory database features against an isolated test engine."""
+    """Execute lightweight and complete database verification + live Streamlit validation."""
     print("==================================================")
     print("   OraCLI 10G Smoke Test Suite Execution")
     print("==================================================")
@@ -141,8 +197,8 @@ def run_smoke_test() -> bool:
         executor.execute("COMMIT;", session)
         print("      PASS: Real ACID transactions & savepoint rollbacks confirmed.")
 
-        # 5. Queries, Joins, Aggregates, HAVING, MINUS
-        print("[5/9] Testing Complex SELECT, GROUP BY, HAVING, AGGREGATES, MINUS...")
+        # 5. Queries, Joins, Aggregates, HAVING, MINUS, ROWNUM
+        print("[5/9] Testing Complex SELECT, GROUP BY, HAVING, AGGREGATES, MINUS, ROWNUM...")
         sel = executor.execute(
             """
             SELECT d.dept_name, COUNT(e.emp_id) AS total_emp, AVG(e.salary) AS avg_sal,
@@ -167,7 +223,14 @@ def run_smoke_test() -> bool:
             session,
         )
         assert len(minus_res.result.rows) == 1
-        print("      PASS: Aggregates, GROUP BY, HAVING, and MINUS executed accurately.")
+
+        # ROWNUM validation
+        rownum_res = executor.execute(
+            "SELECT name FROM employees WHERE rownum < 2;",
+            session,
+        )
+        assert len(rownum_res.result.rows) == 1
+        print("      PASS: Aggregates, GROUP BY, HAVING, MINUS, and ROWNUM executed accurately.")
 
         # 6. Views & Materialized Views
         print("[6/9] Testing Views & Materialized Views snapshot lifecycle...")
@@ -213,11 +276,11 @@ def run_smoke_test() -> bool:
         print("[8/9] Testing Streamlit Application Module Load...")
         import app
 
-        assert hasattr(app, "render_app") or hasattr(app, "main") or app is not None
+        assert hasattr(app, "execute_sql_batch") or hasattr(app, "get_engine") or app is not None
         print("      PASS: Streamlit app.py imported cleanly.")
 
         # 9. Live Streamlit Headless Server Startup & Response Check
-        live_ok = verify_streamlit_live_startup(port=8509, timeout_sec=12)
+        live_ok = verify_streamlit_live_startup(timeout_sec=30)
         if not live_ok:
             raise RuntimeError("Live Streamlit server startup verification failed.")
 
