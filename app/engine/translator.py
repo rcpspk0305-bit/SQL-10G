@@ -185,8 +185,9 @@ class SQLTranslator:
         }
 
     def _transform_data_types(self, expression: exp.Expression) -> exp.Expression:
-        """Walk AST and transform Oracle data types and functions for SQLite."""
+        """Walk AST and transform Oracle data types, functions, and ROWNUM for SQLite."""
 
+        # 1. Transform SELECT expressions: ROWNUM -> ROW_NUMBER() OVER ()
         def transform(node: exp.Expression) -> exp.Expression:
             if isinstance(node, exp.DataType):
                 type_name = (
@@ -202,9 +203,76 @@ class SQLTranslator:
                 if node.args.get("decimals"):
                     args.append(node.args["decimals"])
                 return exp.Anonymous(this="TRUNC", expressions=args)
+            if isinstance(node, exp.Column) and node.name.lower() == "rownum":
+                parent = node.parent
+                in_where = False
+                while parent:
+                    if isinstance(parent, exp.Where):
+                        in_where = True
+                        break
+                    parent = parent.parent
+                if not in_where:
+                    return exp.Window(
+                        this=exp.Anonymous(this="ROW_NUMBER"), partition_by=[], order=[]
+                    )
             return node
 
-        return expression.transform(transform)
+        transformed = expression.transform(transform)
+
+        # 2. Transform WHERE clause with ROWNUM (e.g. WHERE rownum < 3 -> LIMIT 2)
+        if isinstance(transformed, exp.Select):
+            where = transformed.find(exp.Where)
+            if where:
+                limit_val = None
+
+                def inspect_where(cond: exp.Expression | None) -> exp.Expression | None:
+                    nonlocal limit_val
+                    if cond is None:
+                        return None
+                    if (
+                        isinstance(cond, exp.LT)
+                        and isinstance(cond.this, exp.Column)
+                        and cond.this.name.lower() == "rownum"
+                    ):
+                        if isinstance(cond.expression, exp.Literal) and cond.expression.is_number:
+                            limit_val = max(0, int(cond.expression.this) - 1)
+                            return None
+                    elif (
+                        isinstance(cond, exp.LTE)
+                        and isinstance(cond.this, exp.Column)
+                        and cond.this.name.lower() == "rownum"
+                    ):
+                        if isinstance(cond.expression, exp.Literal) and cond.expression.is_number:
+                            limit_val = max(0, int(cond.expression.this))
+                            return None
+                    elif (
+                        isinstance(cond, exp.EQ)
+                        and isinstance(cond.this, exp.Column)
+                        and cond.this.name.lower() == "rownum"
+                    ):
+                        if isinstance(cond.expression, exp.Literal) and cond.expression.this == "1":
+                            limit_val = 1
+                            return None
+                    return cond
+
+                if isinstance(where.this, exp.And):
+                    left = inspect_where(where.this.left)
+                    right = inspect_where(where.this.right)
+                    if left is None and right is not None:
+                        where.set("this", right)
+                    elif right is None and left is not None:
+                        where.set("this", left)
+                    elif left is None and right is None:
+                        transformed.set("where", None)
+                else:
+                    res = inspect_where(where.this)
+                    if res is None:
+                        transformed.set("where", None)
+
+                if limit_val is not None:
+                    transformed.limit(limit_val, copy=False)
+
+        return transformed
 
     def transpile(self, sql: str) -> TranspiledQuery:
         """Transpile Oracle SQL string to SQLite SQL string."""
